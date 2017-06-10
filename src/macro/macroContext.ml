@@ -25,7 +25,15 @@ open Typecore
 open Error
 open Globals
 
-module InterpImpl = Interp (* Hlmacro *)
+module Eval = struct
+	include EvalEncode
+	include EvalDecode
+	include EvalValue
+	include EvalContext
+	include EvalMain
+end
+
+module InterpImpl = Eval (* Hlmacro *)
 
 module Interp = struct
 	module BuiltApi = MacroApi.MacroApiImpl(InterpImpl)
@@ -78,7 +86,7 @@ let macro_timer ctx l =
 
 let typing_timer ctx need_type f =
 	let t = Common.timer ["typing"] in
-	let old = ctx.com.error and oldp = ctx.pass in
+	let old = ctx.com.error and oldp = ctx.pass and oldlocals = ctx.locals in
 	(*
 		disable resumable errors... unless we are in display mode (we want to reach point of completion)
 	*)
@@ -89,6 +97,7 @@ let typing_timer ctx need_type f =
 		t();
 		ctx.com.error <- old;
 		ctx.pass <- oldp;
+		ctx.locals <- oldlocals;
 	in
 	try
 		let r = f() in
@@ -356,6 +365,10 @@ let make_macro_api ctx p =
 		MacroApi.on_reuse = (fun f ->
 			macro_interp_on_reuse := f :: !macro_interp_on_reuse
 		);
+		MacroApi.decode_expr = Interp.decode_expr;
+		MacroApi.encode_expr = Interp.encode_expr;
+		MacroApi.encode_ctype = Interp.encode_ctype;
+		MacroApi.decode_type = Interp.decode_type;
 	}
 
 let rec init_macro_interp ctx mctx mint =
@@ -680,7 +693,7 @@ let type_macro ctx mode cpath f (el:Ast.expr list) p =
 					else try
 						let ct = Interp.decode_ctype v in
 						Typeload.load_complex_type ctx false p ct;
-					with MacroApi.Invalid_expr ->
+					with MacroApi.Invalid_expr | EvalContext.RunTimeException _ ->
 						Interp.decode_type v
 					in
 					ctx.ret <- t;
@@ -757,8 +770,8 @@ let interpret ctx =
 	let mctx = Interp.create ctx.com (make_macro_api ctx null_pos) false in
 	Interp.add_types mctx ctx.com.types (fun t -> ());
 	match ctx.com.main with
-	| None -> ()
-	| Some e -> ignore(Interp.eval_expr mctx e)
+		| None -> ()
+		| Some e -> ignore(Interp.eval_expr mctx e)
 
 let setup() =
 	Interp.setup Interp.macro_api
