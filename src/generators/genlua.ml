@@ -476,12 +476,12 @@ and gen_loop ctx label cond e =
     if will_continue then begin
         println ctx "local _hx_continue_%i = false;" ctx.break_depth;
     end;
+    let b = open_block ctx in
     print ctx "%s " label;
     gen_cond ctx cond;
     print ctx " do ";
     if will_continue then print ctx "repeat ";
     gen_block_element ctx e;
-    newline ctx;
     if will_continue then begin
         if will_continue then begin
             println ctx "until true";
@@ -494,6 +494,8 @@ and gen_loop ctx label cond e =
             println ctx "break;";
         println ctx "end;";
     end;
+    b();
+    newline ctx;
     print ctx "end";
     ctx.in_loop <- old_in_loop;
     ctx.break_depth <- ctx.break_depth-1;
@@ -1640,8 +1642,9 @@ let generate_enum ctx e =
 
 let generate_static ctx (c,f,e) =
 	print ctx "%s%s = " (s_path ctx c.cl_path) (field f);
-	gen_value ctx e;
-	newline ctx
+        gen_value ctx e;
+        semicolon ctx;
+        newline ctx
 
 let generate_enumMeta_fields ctx = function
     | TEnumDecl e -> begin
